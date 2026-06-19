@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Posts — FTMK Lost &amp; Found</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="navContainer"></div>
+
+<div class="my-posts-header">
+  <div style="max-width:1100px;margin:0 auto;padding:0 1rem;">
+    <h1>My Posts</h1>
+    <p id="myPostsSubtitle">Your submitted lost &amp; found reports</p>
+  </div>
+</div>
+
+<div class="main">
+  <div class="section-header">
+    <h2>Your Posts</h2>
+    <a href="newpost.html" class="btn btn-accent btn-sm">+ New Post</a>
+  </div>
+  <div class="cards-grid" id="cardsGrid"><p style="color:var(--gray-400)">Loading…</p></div>
+  <div class="empty-state" id="emptyState" style="display:none;">
+    <div class="empty-state-icon">&#128238;</div>
+    <p>You haven't made any posts yet.</p>
+    <br><a href="newpost.html" class="btn btn-accent">Create Your First Post</a>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-header">
+      <h3 id="detailTitle">Item Detail</h3>
+      <button class="modal-close" onclick="closeModal('detailModal')">&#10005;</button>
+    </div>
+    <div class="modal-body"   id="detailBody"></div>
+    <div class="modal-footer" id="detailFooter"></div>
+  </div>
+</div>
+
+<!-- CLAIMS LIST MODAL (per-post) -->
+<div class="modal-overlay" id="claimsModal">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-header">
+      <h3 id="claimsModalTitle">Claims for this Post</h3>
+      <button class="modal-close" onclick="closeModal('claimsModal')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="claimsModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-gray btn-sm" onclick="closeModal('claimsModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+let currentUser = null;
+let _claimCountByPost = {};
+
+(async () => {
+  await initUser();
+  currentUser = getUser();
+  if (!currentUser) { window.location.href = 'login.html?redirect=myposts.html'; return; }
+  document.getElementById('navContainer').innerHTML = getNavHTML('myposts');
+  document.getElementById('myPostsSubtitle').textContent = 'Logged in as: ' + currentUser.name + ' (' + currentUser.id + ')';
+  await loadNavBadge();
+  await renderMyPosts();
+})();
+
+async function renderMyPosts() {
+  const grid  = document.getElementById('cardsGrid');
+  const empty = document.getElementById('emptyState');
+
+  const myPosts = await getPosts({ owner: currentUser.id });
+  if (!myPosts.length) { grid.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  
+  const allIncoming = await getIncomingClaims();
+  _claimCountByPost = {};
+  allIncoming.forEach(c => {
+    if (c.claim_status === 'pending') {
+      _claimCountByPost[c.post_id] = (_claimCountByPost[c.post_id] || 0) + 1;
+    }
+  });
+
+  grid.innerHTML = myPosts.map(p => {
+    const thumb = (p.images && p.images[0]) || p.img;
+    const pendingCount = _claimCountByPost[p.id] || 0;
+    return `
+    <div class="card card-relative" onclick="openDetail(${p.id})">
+      ${p.status === 'resolved' ? '<div class="resolved-overlay">Resolved</div>' : ''}
+      ${pendingCount > 0 ? `<div style="position:absolute;top:8px;right:8px;z-index:2;">
+        <span class="notif-badge" style="background:var(--accent);color:white;font-size:11px;padding:3px 7px;border-radius:12px;">
+          ${pendingCount} claim${pendingCount>1?'s':''}
+        </span></div>` : ''}
+      <div class="card-img" style="font-size:56px;display:flex;align-items:center;justify-content:center;">
+        ${thumb ? `<img src="${thumb}" style="width:100%;height:100%;object-fit:cover;">` : (EMOJIS[p.cat]||'&#128230;')}
+      </div>
+      <div class="card-body">
+        <div class="card-badges">
+          <span class="badge badge-${p.type}">${p.type==='lost'?' Lost':'Found'}</span>
+          <span class="badge badge-cat">${p.cat}</span>
+          ${p.status==='resolved'?'<span class="badge badge-resolved">Resolved</span>':''}
+        </div>
+        <div class="card-title">${p.title}</div>
+        <div class="card-desc">${p.desc}</div>
+        <div class="card-meta">
+          <div class="card-meta-loc">&#128205; ${p.loc}</div>
+          <span>${formatDate(p.date)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function openDetail(id) {
+  const data = await apiGet('posts.php', { action: 'get', id });
+  if (!data.ok) { showToast('Post not found.'); return; }
+  const p = data.post;
+
+  const thumb = (p.images && p.images[0]) || p.img;
+  const allImgs = p.images && p.images.length ? p.images : (p.img ? [p.img] : []);
+  const galleryHtml = allImgs.length
+    ? `<div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:1rem;">
+        ${allImgs.map(src=>`<img src="${src}" style="height:110px;border-radius:var(--radius-sm);object-fit:cover;flex-shrink:0;">`).join('')}
+      </div>`
+    : `<div style="font-size:72px;text-align:center;background:var(--gray-50);border-radius:var(--radius-sm);padding:1.5rem;margin-bottom:1rem;">${EMOJIS[p.cat]||'&#128230;'}</div>`;
+
+  const pendingCount = _claimCountByPost[p.id] || 0;
+
+  document.getElementById('detailTitle').textContent = p.title;
+  document.getElementById('detailBody').innerHTML = `
+    ${galleryHtml}
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+      <span class="badge badge-${p.type}">${p.type==='lost'?' Lost':'Found'}</span>
+      <span class="badge badge-cat">${p.cat}</span>
+      ${p.status==='resolved'?'<span class="badge badge-resolved">Resolved</span>':''}
+    </div>
+    <div class="detail-row"><span class="detail-label">Description</span><span class="detail-val">${p.desc}</span></div>
+    <div class="detail-row"><span class="detail-label">Location</span><span class="detail-val">&#128205; ${p.loc}</span></div>
+    <div class="detail-row"><span class="detail-label">Date</span><span class="detail-val">&#128197; ${formatDate(p.date)}</span></div>
+    <div class="detail-row"><span class="detail-label">Contact</span><span class="detail-val" style="color:var(--primary-mid);font-weight:500;">&#128231; ${p.contact}</span></div>
+    ${pendingCount > 0 ? `<div class="alert alert-warn" style="margin-top:10px;"> ${pendingCount} pending claim${pendingCount>1?'s':''} awaiting your review.</div>` : ''}
+  `;
+
+  document.getElementById('detailFooter').innerHTML = `
+    <button class="btn btn-gray btn-sm" onclick="closeModal('detailModal')">Close</button>
+    <button class="btn btn-primary btn-sm" onclick="openClaimsForPost(${p.id})">
+       Claims ${pendingCount > 0 ? `<span class="notif-badge" style="background:white;color:var(--primary);margin-left:2px;">${pendingCount}</span>` : ''}
+    </button>
+    ${p.status === 'active' ? `<button class="btn btn-success btn-sm" onclick="markResolved(${p.id})">Mark Resolved</button>` : ''}
+    <button class="btn btn-danger btn-sm" onclick="deletePost(${p.id})">Delete</button>
+  `;
+  openModal('detailModal');
+}
+
+async function openClaimsForPost(postId) {
+  closeModal('detailModal');
+  const claims = await getClaimsForPost(postId);
+  const post   = (await apiGet('posts.php', { action: 'get', id: postId })).post;
+
+  document.getElementById('claimsModalTitle').textContent = 'Claims for: ' + (post?.title || 'Post #' + postId);
+
+  if (!claims.length) {
+    document.getElementById('claimsModalBody').innerHTML =
+      '<div class="empty-state" style="padding:2rem 0;"><div class="empty-state-icon"></div><p>No claims yet.</p></div>';
+  } else {
+    document.getElementById('claimsModalBody').innerHTML = `
+      <div class="inbox-list">
+        ${claims.map(c => `
+          <div class="inbox-item" style="cursor:default;">
+            <div class="avatar ${c.claimant_color==='orange'?'avatar-orange':'avatar-blue'}">${c.claimant_avatar}</div>
+            <div class="inbox-item-body">
+              <div class="inbox-item-title">${c.claimant_name} <span style="font-weight:400;color:var(--gray-400);">(${c.user_id})</span></div>
+              <div class="inbox-item-sub">${c.message}</div>
+              ${c.claimant_email ? `<div style="font-size:12px;color:var(--primary-mid);margin-top:2px;">&#128231; ${c.claimant_email}</div>` : ''}
+              <div class="inbox-item-meta">
+                <span>&#128197; ${formatDateTime(c.date_request)}</span>
+                <span>${claimStatusBadge(c.claim_status)}</span>
+              </div>
+            </div>
+            ${c.claim_status === 'pending' && post?.status === 'active' ? `
+              <div class="inbox-item-actions">
+                <button class="btn btn-success btn-sm" onclick="doAccept(${c.id}, ${postId})">Accept</button>
+                <button class="btn btn-danger btn-sm"  onclick="doReject(${c.id}, ${postId})">&#10005; Reject</button>
+              </div>` : ''}
+          </div>
+        `).join('')}
+      </div>`;
+  }
+  openModal('claimsModal');
+}
+
+async function doAccept(claimId, postId) {
+  if (!confirm('Accept this claim? The post will be marked as Resolved.')) return;
+  const res = await acceptClaim(claimId);
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  showToast('Claim accepted! Post resolved.');
+  closeModal('claimsModal');
+  await renderMyPosts();
+  await loadNavBadge();
+}
+
+async function doReject(claimId, postId) {
+  if (!confirm('Reject this claim?')) return;
+  const res = await rejectClaim(claimId);
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  showToast('Claim rejected.');
+  await openClaimsForPost(postId);
+  await loadNavBadge();
+}
+
+async function markResolved(id) {
+  const res = await apiPost('posts.php', { action: 'resolve', id });
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  closeModal('detailModal');
+  await renderMyPosts();
+  showToast('Post marked as resolved!');
+}
+
+async function deletePost(id) {
+  if (!confirm('Delete this post permanently?')) return;
+  const res = await apiPost('posts.php', { action: 'delete', id });
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  closeModal('detailModal');
+  await renderMyPosts();
+  showToast('Post deleted.');
+}
+}
+</script>
+</body>
+</html>
