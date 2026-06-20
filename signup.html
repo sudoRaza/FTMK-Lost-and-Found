@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign Up — FTMK Lost &amp; Found</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="navContainer"></div>
+
+<div class="page-center">
+  <div class="page-card">
+    <h2>Create Account</h2>
+    <p class="page-subtitle">Join the FTMK Lost &amp; Found community</p>
+
+    <div class="alert alert-warn">&#9888; Registration is restricted to verified UTeM members only.</div>
+
+    <div class="form-group">
+      <label class="form-label">Full Name</label>
+      <input type="text" class="form-control" id="signupName" placeholder="As per student/staff ID">
+    </div>
+    <div class="form-group">
+      <label class="form-label">UTeM Matric / Staff Number</label>
+      <input type="text" class="form-control" id="signupMatric" placeholder="e.g. B032310001 or STF001">
+      <div class="form-note">Students: matric number. Staff: staff number</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">UTeM Outlook Email</label>
+      <input type="email" class="form-control" id="signupEmail" placeholder="name@student.utem.edu.my or name@utem.edu.my">
+      <div class="form-note">Must be a valid @student.utem.edu.my or @utem.edu.my email</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select class="form-control" id="signupRole">
+        <option>Student</option>
+        <option>Lecturer</option>
+        <option>Staff</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" class="form-control" id="signupPass" placeholder="At least 8 characters">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirm Password</label>
+      <input type="password" class="form-control" id="signupPass2" placeholder="Repeat password">
+    </div>
+
+    <div id="signupError" style="display:none;" class="alert"></div>
+
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" id="signupBtn" onclick="doSignup()">Create Account</button>
+
+    <div class="form-divider"><span>or</span></div>
+    <div class="form-footer">
+      Already have an account? <a href="login.html">Log In</a>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+(async () => {
+  await initUser();
+  if (getUser()) { window.location.href = 'index.html'; return; }
+  document.getElementById('navContainer').innerHTML = getNavHTML('signup');
+})();
+
+function showError(msg) {
+  const el = document.getElementById('signupError');
+  el.textContent = msg;
+  el.className = 'alert alert-warn';
+  el.style.display = 'flex';
+}
+
+async function doSignup() {
+  const name   = document.getElementById('signupName').value.trim();
+  const matric = document.getElementById('signupMatric').value.trim();
+  const email  = document.getElementById('signupEmail').value.trim();
+  const role   = document.getElementById('signupRole').value;
+  const pass   = document.getElementById('signupPass').value;
+  const pass2  = document.getElementById('signupPass2').value;
+
+  if (!name || !matric || !email || !pass) { showError('Please fill in all required fields.'); return; }
+  if (pass.length < 8) { showError('Password must be at least 8 characters.'); return; }
+  if (pass !== pass2) { showError('Passwords do not match.'); return; }
+
+  const btn = document.getElementById('signupBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating account…';
+
+  try {
+    const res = await apiPost('auth.php', { action: 'signup' }, { name, matric, email, role, password: pass });
+    if (!res.ok) {
+      showError(res.error || 'Sign up failed.');
+    } else {
+      window.location.href = 'index.html';
+    }
+  } catch {
+    showError('Server error. Make sure XAMPP is running.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Account';
+  }
+}
+</script>
+</body>
+</html>
