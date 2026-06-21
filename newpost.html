@@ -3,12 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>New Post — FTMK Lost &amp; Found</title>
+<title>New Post FTMK Lost &amp; Found</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<div id="navContainer"><al"a id="postTitle" placeholder="e.g. Black Samsung phone, Matric card...">
+<div id="navContainer"></div>
+
+<div class="page-center">
+  <div class="page-card" style="max-width:520px;">
+    <h2>Create New Post</h2>
+    <p class="page-subtitle">Report a lost item or something you found on campus</p>
+
+    <div class="form-group">
+      <label class="form-label">Post Type</label>
+      <div class="tabs-type">
+        <button id="typeLostBtn" class="active" onclick="setPostType('lost')"> I Lost Something</button>
+        <button id="typeFoundBtn" onclick="setPostType('found')">I Found Something</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Item Name</label>
+      <input type="text" class="form-control" id="postTitle" placeholder="e.g. Black Samsung phone, Matric card...">
     </div>
     <div class="form-group">
       <label class="form-label">Category</label>

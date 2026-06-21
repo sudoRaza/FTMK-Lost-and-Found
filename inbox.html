@@ -30,7 +30,7 @@
     <button class="inbox-tab" id="tabSent"     onclick="switchTab('sent')">Sent Messages</button>
   </div>
 
-  -- INCOMING CLAIMS (owner view) --
+  <!-- INCOMING CLAIMS (owner view) -->
   <div id="panelIncoming">
     <div id="claimsListIncoming" class="inbox-list"></div>
     <div class="empty-state" id="emptyIncoming" style="display:none;">
@@ -39,7 +39,7 @@
     </div>
   </div>
 
-  // -- MESSAGES RECEIVED --
+  <!-- MESSAGES RECEIVED -->
   <div id="panelMessages" style="display:none;">
     <div id="contactsInbox" class="inbox-list"></div>
     <div class="empty-state" id="emptyMessages" style="display:none;">
@@ -58,7 +58,7 @@
     </div>
   </div>
 
-  -- SENT MESSAGES --
+  <!-- SENT MESSAGES -->
   <div id="panelSent" style="display:none;">
     <div id="contactsSent" class="inbox-list"></div>
     <div class="empty-state" id="emptySent" style="display:none;">
@@ -71,7 +71,7 @@
 
 <div id="toast"></div>
 
--- CLAIM DETAIL MODAL --
+<!-- CLAIM DETAIL MODAL -->
 <div class="modal-overlay" id="claimDetailModal">
   <div class="modal" style="max-width:480px;">
     <div class="modal-header">
@@ -83,7 +83,7 @@
   </div>
 </div>
 
-// -- MESSAGE DETAIL MODAL --
+<!-- MESSAGE DETAIL MODAL -->
 <div class="modal-overlay" id="msgDetailModal">
   <div class="modal" style="max-width:480px;">
     <div class="modal-header">
@@ -122,9 +122,9 @@ async function loadAll() {
     getContactSent(),
   ]);
 
-  // -- Update badges --
+  // Update tab badges
   const pendingClaims  = _allIncoming.filter(c => c.claim_status === 'pending').length;
-  const unreadMessages = _allMessages.filter(c => !c.read).length;
+  const unreadMessages = _allMessages.filter(c => !c.is_read).length;
 
   const bc = document.getElementById('badgeClaims');
   if (bc) { bc.textContent = pendingClaims; bc.style.display = pendingClaims ? 'inline-flex' : 'none'; }
@@ -187,7 +187,7 @@ function openClaimDetail(claimId) {
            <div class="post-user-id">${c.user_id}</div></div>
     </div>
     <div class="detail-row"><span class="detail-label">Item</span><span class="detail-val">${c.post_title || 'Post #' + c.post_id}</span></div>
-    <div class="detail-row"><span class="detail-label">Type</span><span class="detail-val">${c.post_type === 'lost' ? ' Lost' : 'Found'}</span></div>
+    <div class="detail-row"><span class="detail-label">Type</span><span class="detail-val">${c.post_type === 'lost' ? '&#128269; Lost' : '&#10067; Found'}</span></div>
     <div class="detail-row"><span class="detail-label">Status</span><span class="detail-val">${claimStatusBadge(c.claim_status)}</span></div>
     <div class="detail-row"><span class="detail-label">Submitted</span><span class="detail-val">${formatDateTime(c.date_request)}</span></div>
     <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:12px;margin-top:10px;font-size:14px;line-height:1.6;">
@@ -213,8 +213,9 @@ async function doAcceptClaim(claimId) {
   const res = await acceptClaim(claimId);
   if (!res.ok) { showToast(res.error || 'Failed.'); return; }
   closeModal('claimDetailModal');
-  showToast('Claim accepted! Post resolved.', 'success');
+  showToast('Claim accepted! Post resolved.');
   await loadAll();
+  await loadNavBadge();
 }
 
 async function doRejectClaim(claimId) {
@@ -224,6 +225,7 @@ async function doRejectClaim(claimId) {
   closeModal('claimDetailModal');
   showToast('Claim rejected.');
   await loadAll();
+  await loadNavBadge();
 }
 
 // ---- MESSAGES RECEIVED ----
@@ -234,14 +236,14 @@ function renderMessages() {
   empty.style.display = 'none';
 
   list.innerHTML = _allMessages.map(c => `
-    <div class="inbox-item ${!c.read ? 'unread' : ''}" onclick="openMsgDetail(${c.id}, 'inbox')">
+    <div class="inbox-item ${!c.is_read ? 'unread' : ''}" onclick="openMsgDetail(${c.id}, 'inbox')">
       <div class="avatar ${c.sender_color === 'orange' ? 'avatar-orange' : 'avatar-blue'}">${c.sender_avatar}</div>
       <div class="inbox-item-body">
         <div class="inbox-item-title">${c.sender_name} &mdash; re: <em>${c.post_title || 'Post #' + c.post_id}</em></div>
         <div class="inbox-item-sub">${c.message_note}</div>
         <div class="inbox-item-meta">
           <span>&#128197; ${formatDateTime(c.date_contacted)}</span>
-          ${!c.read ? '<span class="badge badge-pending">Unread</span>' : '<span style="color:var(--gray-400);font-size:12px;">Read</span>'}
+          ${!c.is_read ? '<span class="badge badge-pending">Unread</span>' : '<span style="color:var(--gray-400);font-size:12px;">Read</span>'}
         </div>
       </div>
     </div>
@@ -253,11 +255,18 @@ async function openMsgDetail(contactId, direction) {
   const c   = arr.find(x => x.id === contactId);
   if (!c) return;
 
-  // Mark as read
-  if (!c.read && direction === 'inbox') {
+  // Mark as read and update badge
+  if (!c.is_read && direction === 'inbox') {
     await markContactRead(contactId);
-    c.read = true;
+    c.is_read = 1;
     renderMessages();
+
+    // Update the tab badge count immediately
+    const unreadMessages = _allMessages.filter(m => !m.is_read).length;
+    const bm = document.getElementById('badgeMessages');
+    if (bm) { bm.textContent = unreadMessages; bm.style.display = unreadMessages ? 'inline-flex' : 'none'; }
+
+    // Update the nav badge
     await loadNavBadge();
   }
 
@@ -290,7 +299,7 @@ function renderMyClaims() {
 
   list.innerHTML = _allMyClaims.map(c => `
     <div class="inbox-item">
-      <div class="avatar avatar-blue" style="font-size:20px;"></div>
+      <div class="avatar avatar-blue" style="font-size:20px;">&#128238;</div>
       <div class="inbox-item-body">
         <div class="inbox-item-title">Claim for: <em>${c.post_title || 'Post #' + c.post_id}</em></div>
         <div class="inbox-item-sub">${c.message}</div>

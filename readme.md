@@ -72,7 +72,7 @@ define('DB_PASS', '');
 
 Open your browser and go to:
 ```
-http://localhost/ftmk_v2
+http://localhost/FTMK-Lost-and-Found
 ```
 
 ---
