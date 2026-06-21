@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log In — FTMK Lost &amp; Found</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="navContainer"></div>
+
+<div class="page-center">
+  <div class="page-card">
+    <h2>Welcome Back</h2>
+    <p class="page-subtitle">Log in to your FTMK Lost &amp; Found account</p>
+
+    <div class="alert alert-info"> Only UTeM students and staff can log in.</div>
+
+    <div class="form-group">
+      <label class="form-label">UTeM Email or Matric Number</label>
+      <input type="text" class="form-control" id="loginId" placeholder="e.g. B032310001 or name@student.utem.edu.my">
+      <div class="form-note">Use your student matric number or UTeM Outlook email</div>
+    </div>
+    <div class="form-group">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+        <label class="form-label" style="margin-bottom:0;">Password</label>
+        <a href="forgot-password.html" style="font-size:12px;color:var(--primary);text-decoration:none;">Forgot password?</a>
+      </div>
+      <input type="password" class="form-control" id="loginPass" placeholder="Enter password">
+    </div>
+
+    <div id="loginError" style="display:none;" class="alert"></div>
+
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;" id="loginBtn" onclick="doLogin()">Log In</button>
+
+    <div class="form-divider"><span>or</span></div>
+    <div class="form-footer">
+      Don't have an account? <a href="signup.html">Sign Up</a>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+(async () => {
+  await initUser();
+  if (getUser()) { window.location.href = 'index.html'; return; }
+  document.getElementById('navContainer').innerHTML = getNavHTML('login');
+})();
+
+function showError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.className = 'alert alert-warn';
+  el.style.display = 'flex';
+}
+
+async function doLogin() {
+  const identifier = document.getElementById('loginId').value.trim();
+  const password   = document.getElementById('loginPass').value;
+  if (!identifier || !password) { showError('Please fill in all fields.'); return; }
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = 'Logging in…';
+
+  try {
+    const res = await apiPost('auth.php', { action: 'login' }, { identifier, password });
+    if (!res.ok) {
+      showError(res.error || 'Login failed.');
+    } else {
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || 'index.html';
+      window.location.href = redirect;
+    }
+  } catch {
+    showError('Server error. Make sure XAMPP is running.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Log In';
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>
