@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbox — FTMK Lost &amp; Found</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="navContainer"></div>
+
+<div class="inbox-header">
+  <div style="max-width:1100px;margin:0 auto;padding:0 1rem;">
+    <h1>Inbox</h1>
+    <p id="inboxSubtitle">Claims &amp; messages on your posts</p>
+  </div>
+</div>
+
+<div class="main" style="max-width:780px;">
+
+  <div class="inbox-tabs">
+    <button class="inbox-tab active" id="tabIncoming" onclick="switchTab('incoming')">
+      Incoming Claims <span class="notif-badge" id="badgeClaims" style="display:none;background:var(--accent);color:white;">0</span>
+    </button>
+    <button class="inbox-tab" id="tabMessages" onclick="switchTab('messages')">
+      Messages Received <span class="notif-badge" id="badgeMessages" style="display:none;background:var(--primary);color:white;">0</span>
+    </button>
+    <button class="inbox-tab" id="tabMyClaims" onclick="switchTab('myClaims')">My Claims</button>
+    <button class="inbox-tab" id="tabSent"     onclick="switchTab('sent')">Sent Messages</button>
+  </div>
+
+  -- INCOMING CLAIMS (owner view) --
+  <div id="panelIncoming">
+    <div id="claimsListIncoming" class="inbox-list"></div>
+    <div class="empty-state" id="emptyIncoming" style="display:none;">
+      <div class="empty-state-icon"></div>
+      <p>No incoming claims yet.</p>
+    </div>
+  </div>
+
+  // -- MESSAGES RECEIVED --
+  <div id="panelMessages" style="display:none;">
+    <div id="contactsInbox" class="inbox-list"></div>
+    <div class="empty-state" id="emptyMessages" style="display:none;">
+      <div class="empty-state-icon">&#9993;</div>
+      <p>No messages received yet.</p>
+    </div>
+  </div>
+
+  <!-- MY CLAIMS (claimant view) -->
+  <div id="panelMyClaims" style="display:none;">
+    <div id="claimsListOutgoing" class="inbox-list"></div>
+    <div class="empty-state" id="emptyMyClaims" style="display:none;">
+      <div class="empty-state-icon">&#128238;</div>
+      <p>You haven't submitted any claims yet.</p>
+      <br><a href="index.html" class="btn btn-primary btn-sm">Browse Posts</a>
+    </div>
+  </div>
+
+  -- SENT MESSAGES --
+  <div id="panelSent" style="display:none;">
+    <div id="contactsSent" class="inbox-list"></div>
+    <div class="empty-state" id="emptySent" style="display:none;">
+      <div class="empty-state-icon">&#9993;</div>
+      <p>You haven't sent any messages yet.</p>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+-- CLAIM DETAIL MODAL --
+<div class="modal-overlay" id="claimDetailModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 id="claimDetailTitle">Claim Detail</h3>
+      <button class="modal-close" onclick="closeModal('claimDetailModal')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="claimDetailBody"></div>
+    <div class="modal-footer" id="claimDetailFooter"></div>
+  </div>
+</div>
+
+// -- MESSAGE DETAIL MODAL --
+<div class="modal-overlay" id="msgDetailModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>Message Detail</h3>
+      <button class="modal-close" onclick="closeModal('msgDetailModal')">&#10005;</button>
+    </div>
+    <div class="modal-body" id="msgDetailBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-gray btn-sm" onclick="closeModal('msgDetailModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+let currentTab = 'incoming';
+let _allIncoming = [], _allMessages = [], _allMyClaims = [], _allSent = [];
+
+(async () => {
+  await initUser();
+  const user = getUser();
+  if (!user) { window.location.href = 'login.html?redirect=inbox.html'; return; }
+
+  document.getElementById('navContainer').innerHTML = getNavHTML('inbox');
+  document.getElementById('inboxSubtitle').textContent = 'Logged in as: ' + user.name;
+
+  await loadAll();
+  await loadNavBadge();
+})();
+
+async function loadAll() {
+  [_allIncoming, _allMessages, _allMyClaims, _allSent] = await Promise.all([
+    getIncomingClaims(),
+    getContactInbox(),
+    getOutgoingClaims(),
+    getContactSent(),
+  ]);
+
+  // -- Update badges --
+  const pendingClaims  = _allIncoming.filter(c => c.claim_status === 'pending').length;
+  const unreadMessages = _allMessages.filter(c => !c.read).length;
+
+  const bc = document.getElementById('badgeClaims');
+  if (bc) { bc.textContent = pendingClaims; bc.style.display = pendingClaims ? 'inline-flex' : 'none'; }
+  const bm = document.getElementById('badgeMessages');
+  if (bm) { bm.textContent = unreadMessages; bm.style.display = unreadMessages ? 'inline-flex' : 'none'; }
+
+  renderCurrentTab();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  ['incoming','messages','myClaims','sent'].forEach(t => {
+    document.getElementById('panel' + cap(t)).style.display = t === tab ? 'block' : 'none';
+    document.getElementById('tab'   + cap(t)).classList.toggle('active', t === tab);
+  });
+  renderCurrentTab();
+}
+
+function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function renderCurrentTab() {
+  if (currentTab === 'incoming')  renderIncoming();
+  if (currentTab === 'messages')  renderMessages();
+  if (currentTab === 'myClaims')  renderMyClaims();
+  if (currentTab === 'sent')      renderSent();
+}
+
+// ---- INCOMING CLAIMS ----
+function renderIncoming() {
+  const list  = document.getElementById('claimsListIncoming');
+  const empty = document.getElementById('emptyIncoming');
+  if (!_allIncoming.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  list.innerHTML = _allIncoming.map(c => `
+    <div class="inbox-item ${c.claim_status === 'pending' ? 'unread' : ''}" onclick="openClaimDetail(${c.id})">
+      <div class="avatar ${c.claimant_color === 'orange' ? 'avatar-orange' : 'avatar-blue'}">${c.claimant_avatar}</div>
+      <div class="inbox-item-body">
+        <div class="inbox-item-title">${c.claimant_name} claimed: <em>${c.post_title || 'Post #' + c.post_id}</em></div>
+        <div class="inbox-item-sub">${c.message}</div>
+        <div class="inbox-item-meta">
+          <span>&#128197; ${formatDateTime(c.date_request)}</span>
+          <span>${claimStatusBadge(c.claim_status)}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openClaimDetail(claimId) {
+  const c = _allIncoming.find(x => x.id === claimId);
+  if (!c) return;
+  const isPending = c.claim_status === 'pending';
+
+  document.getElementById('claimDetailTitle').textContent = 'Claim for: ' + (c.post_title || 'Post #' + c.post_id);
+  document.getElementById('claimDetailBody').innerHTML = `
+    <div class="post-user" style="margin-bottom:1rem;">
+      <div class="avatar ${c.claimant_color === 'orange' ? 'avatar-orange' : 'avatar-blue'}">${c.claimant_avatar}</div>
+      <div><div class="post-user-name">${c.claimant_name}</div>
+           <div class="post-user-id">${c.user_id}</div></div>
+    </div>
+    <div class="detail-row"><span class="detail-label">Item</span><span class="detail-val">${c.post_title || 'Post #' + c.post_id}</span></div>
+    <div class="detail-row"><span class="detail-label">Type</span><span class="detail-val">${c.post_type === 'lost' ? ' Lost' : 'Found'}</span></div>
+    <div class="detail-row"><span class="detail-label">Status</span><span class="detail-val">${claimStatusBadge(c.claim_status)}</span></div>
+    <div class="detail-row"><span class="detail-label">Submitted</span><span class="detail-val">${formatDateTime(c.date_request)}</span></div>
+    <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:12px;margin-top:10px;font-size:14px;line-height:1.6;">
+      <strong style="font-size:12px;color:var(--gray-400);display:block;margin-bottom:4px;">CLAIMANT'S MESSAGE</strong>
+      ${c.message}
+    </div>
+    ${c.claimant_email ? `<div class="detail-row" style="margin-top:10px;"><span class="detail-label">Email</span>
+      <span class="detail-val" style="color:var(--primary-mid);font-weight:500;">&#128231; ${c.claimant_email}</span></div>` : ''}
+  `;
+
+  document.getElementById('claimDetailFooter').innerHTML = `
+    <button class="btn btn-gray btn-sm" onclick="closeModal('claimDetailModal')">Close</button>
+    ${isPending ? `
+      <button class="btn btn-danger btn-sm"  onclick="doRejectClaim(${c.id})">&#10005; Reject</button>
+      <button class="btn btn-success btn-sm" onclick="doAcceptClaim(${c.id})">Accept &amp; Resolve</button>
+    ` : ''}
+  `;
+  openModal('claimDetailModal');
+}
+
+async function doAcceptClaim(claimId) {
+  if (!confirm('Accept this claim? The post will be marked as Resolved and all other claims will be rejected.')) return;
+  const res = await acceptClaim(claimId);
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  closeModal('claimDetailModal');
+  showToast('Claim accepted! Post resolved.', 'success');
+  await loadAll();
+}
+
+async function doRejectClaim(claimId) {
+  if (!confirm('Reject this claim?')) return;
+  const res = await rejectClaim(claimId);
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  closeModal('claimDetailModal');
+  showToast('Claim rejected.');
+  await loadAll();
+}
+
+// ---- MESSAGES RECEIVED ----
+function renderMessages() {
+  const list  = document.getElementById('contactsInbox');
+  const empty = document.getElementById('emptyMessages');
+  if (!_allMessages.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  list.innerHTML = _allMessages.map(c => `
+    <div class="inbox-item ${!c.read ? 'unread' : ''}" onclick="openMsgDetail(${c.id}, 'inbox')">
+      <div class="avatar ${c.sender_color === 'orange' ? 'avatar-orange' : 'avatar-blue'}">${c.sender_avatar}</div>
+      <div class="inbox-item-body">
+        <div class="inbox-item-title">${c.sender_name} &mdash; re: <em>${c.post_title || 'Post #' + c.post_id}</em></div>
+        <div class="inbox-item-sub">${c.message_note}</div>
+        <div class="inbox-item-meta">
+          <span>&#128197; ${formatDateTime(c.date_contacted)}</span>
+          ${!c.read ? '<span class="badge badge-pending">Unread</span>' : '<span style="color:var(--gray-400);font-size:12px;">Read</span>'}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openMsgDetail(contactId, direction) {
+  const arr = direction === 'inbox' ? _allMessages : _allSent;
+  const c   = arr.find(x => x.id === contactId);
+  if (!c) return;
+
+  // Mark as read
+  if (!c.read && direction === 'inbox') {
+    await markContactRead(contactId);
+    c.read = true;
+    renderMessages();
+    await loadNavBadge();
+  }
+
+  const personLabel  = direction === 'inbox' ? 'From'  : 'To (Post)';
+  const personName   = direction === 'inbox' ? (c.sender_name || c.user_id) : (c.post_title || 'Post #' + c.post_id);
+  const personAvatar = direction === 'inbox' ? c.sender_avatar : '&#128238;';
+
+  document.getElementById('msgDetailBody').innerHTML = `
+    <div class="post-user" style="margin-bottom:1rem;">
+      <div class="avatar avatar-blue">${personAvatar}</div>
+      <div><div class="post-user-name">${personName}</div>
+           <div class="post-user-id">${formatDateTime(c.date_contacted)}</div></div>
+    </div>
+    ${c.contact_info ? `<div class="detail-row"><span class="detail-label">Contact info</span>
+      <span class="detail-val" style="color:var(--primary-mid);">&#128222; ${c.contact_info}</span></div>` : ''}
+    <div style="background:var(--gray-50);border-radius:var(--radius-sm);padding:12px;margin-top:10px;font-size:14px;line-height:1.6;">
+      <strong style="font-size:12px;color:var(--gray-400);display:block;margin-bottom:4px;">MESSAGE</strong>
+      ${c.message_note}
+    </div>
+  `;
+  openModal('msgDetailModal');
+}
+
+// ---- MY CLAIMS (outgoing) ----
+function renderMyClaims() {
+  const list  = document.getElementById('claimsListOutgoing');
+  const empty = document.getElementById('emptyMyClaims');
+  if (!_allMyClaims.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  list.innerHTML = _allMyClaims.map(c => `
+    <div class="inbox-item">
+      <div class="avatar avatar-blue" style="font-size:20px;"></div>
+      <div class="inbox-item-body">
+        <div class="inbox-item-title">Claim for: <em>${c.post_title || 'Post #' + c.post_id}</em></div>
+        <div class="inbox-item-sub">${c.message}</div>
+        <div class="inbox-item-meta">
+          <span>&#128197; ${formatDateTime(c.date_request)}</span>
+          <span>${claimStatusBadge(c.claim_status)}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ---- SENT MESSAGES ----
+function renderSent() {
+  const list  = document.getElementById('contactsSent');
+  const empty = document.getElementById('emptySent');
+  if (!_allSent.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  list.innerHTML = _allSent.map(c => `
+    <div class="inbox-item" onclick="openMsgDetail(${c.id}, 'sent')">
+      <div class="avatar avatar-blue" style="font-size:20px;">&#9993;</div>
+      <div class="inbox-item-body">
+        <div class="inbox-item-title">To: <em>${c.post_title || 'Post #' + c.post_id}</em></div>
+        <div class="inbox-item-sub">${c.message_note}</div>
+        <div class="inbox-item-meta"><span>&#128197; ${formatDateTime(c.date_contacted)}</span></div>
+      </div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>
