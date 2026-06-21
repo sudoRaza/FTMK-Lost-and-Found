@@ -1,8 +1,6 @@
 <?php
 // ============================================================
 // mock_db.php — In-memory mock database (PHP session)
-// Covers all 5 ERD tables:
-//   USER, ITEM_POST, ITEM_IMAGE, CLAIM_REQUEST, CONTACT
 // ============================================================
 
 require_once __DIR__ . '/config.php';

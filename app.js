@@ -144,10 +144,10 @@ function getNavHTML(activePage) {
     <nav>
       <div class="nav-inner">
         <a class="nav-brand" href="index.html">
-          <div class="nav-logo">LF</div>
+         <img src="logo.png" class="nav-logo" style="object-fit:contain;padding:4px; background:none;">
           <div>
             <div class="nav-title">FTMK Lost &amp; Found</div>
-            <div class="nav-subtitle">UTeM — Faculty of ICT</div>
+            <div class="nav-subtitle">Faculty of ICT in UTeM</div>
           </div>
         </a>
         <div class="nav-actions" id="navActions" style="${user ? 'display:none' : ''}">
