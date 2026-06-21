@@ -1,11 +1,357 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FTMK Lost &amp; Found</title>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>FILE GITHUB TEST</h1>
-    <p>NI hazim ni try jap</p>
+
+<div id="navContainer"></div>
+
+<div class="hero">
+  <h1>FTMK Lost &amp; Found</h1>
+  <p>Report a lost item or help return something you found on campus</p>
+</div>
+
+<div class="filter-bar">
+  <div class="filter-inner">
+    <div class="search-wrap">
+      <span class="search-icon">&#128269;</span>
+      <input type="text" id="searchInput" placeholder="Search item, location..." oninput="renderCards()">
+    </div>
+    <select class="filter-select" id="catFilter" onchange="renderCards()">
+      <option value="">All Categories</option>
+      <option>Electronics</option>
+      <option>ID / Card</option>
+      <option>Keys</option>
+      <option>Bag / Wallet</option>
+      <option>Clothing</option>
+      <option>Stationery</option>
+      <option>Other</option>
+    </select>
+    <div class="filter-tabs">
+      <button class="tab active-all" id="tabAll"   onclick="setTab('all')">All</button>
+      <button class="tab"            id="tabLost"  onclick="setTab('lost')">Lost</button>
+      <button class="tab"            id="tabFound" onclick="setTab('found')">Found</button>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="section-header">
+    <h2 id="sectionTitle">All Posts</h2>
+    <span class="result-count" id="resultCount"></span>
+  </div>
+  <div class="cards-grid" id="cardsGrid"><p style="color:var(--gray-400);grid-column:1/-1">Loading…</p></div>
+  <div class="empty-state" id="emptyState" style="display:none;">
+    <div class="empty-state-icon">&#128269;</div>
+    <p>No posts match your search.</p>
+  </div>
+</div>
+
+<button class="fab" onclick="fabAction()" title="New Post">+</button>
+<div id="toast"></div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-header">
+      <h3 id="detailTitle">Item Detail</h3>
+      <button class="modal-close" onclick="closeModal('detailModal')">&#10005;</button>
+    </div>
+    <div class="modal-body"   id="detailBody"></div>
+    <div class="modal-footer" id="detailFooter"></div>
+  </div>
+</div>
+
+<!-- CLAIM MODAL -->
+<div class="modal-overlay" id="claimModal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <h3> Submit a Claim</h3>
+      <button class="modal-close" onclick="closeModal('claimModal')">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--gray-600);margin-bottom:1rem;">
+        Explain why this item belongs to you or how you can verify your ownership. The post owner will review your claim.
+      </p>
+      <div class="form-group claim-form">
+        <label class="form-label">Your Message</label>
+        <textarea id="claimMessage" rows="4" placeholder="e.g. This is my phone — it has a sticker on the back and my wallpaper is a mountain photo..."></textarea>
+      </div>
+      <div id="claimError" style="display:none;" class="alert"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray btn-sm" onclick="closeModal('claimModal')">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="claimSubmitBtn" onclick="doSubmitClaim()">Send Claim</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONTACT MODAL -->
+<div class="modal-overlay" id="contactModal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <h3>&#9993; Contact Post Owner</h3>
+      <button class="modal-close" onclick="closeModal('contactModal')">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--gray-600);margin-bottom:1rem;">
+        Send a direct message to the person who posted this item.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Your Contact Info (optional)</label>
+        <input type="text" class="form-control" id="contactInfo" placeholder="Phone or alternate email">
+      </div>
+      <div class="form-group claim-form">
+        <label class="form-label">Message</label>
+        <textarea id="contactMessage" rows="4" placeholder="e.g. Hi, I found your wallet near the cafe. Please WhatsApp me at 012-345 6789..."></textarea>
+      </div>
+      <div id="contactError" style="display:none;" class="alert"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray btn-sm" onclick="closeModal('contactModal')">Cancel</button>
+      <button class="btn btn-success btn-sm" id="contactSubmitBtn" onclick="doSendContact()">Send Message</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+let activeTab  = 'all';
+let allPosts   = [];
+let _activePostId = null;
+
+(async () => {
+  await initUser();
+  document.getElementById('navContainer').innerHTML = getNavHTML('index');
+  await loadNavBadge();
+  allPosts = await getPosts();
+  renderCards();
+})();
+
+function renderCards() {
+  const q     = document.getElementById('searchInput').value.toLowerCase();
+  const cat   = document.getElementById('catFilter').value;
+  const grid  = document.getElementById('cardsGrid');
+  const empty = document.getElementById('emptyState');
+
+  let filtered = allPosts.filter(p => {
+    if (activeTab === 'lost'  && p.type !== 'lost')  return false;
+    if (activeTab === 'found' && p.type !== 'found') return false;
+    if (cat && p.cat !== cat) return false;
+    if (q && !p.title.toLowerCase().includes(q) &&
+             !p.loc.toLowerCase().includes(q)   &&
+             !p.desc.toLowerCase().includes(q))  return false;
+    return true;
+  });
+
+  document.getElementById('resultCount').textContent =
+    filtered.length + ' post' + (filtered.length !== 1 ? 's' : '');
+
+  if (!filtered.length) { grid.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  grid.innerHTML = filtered.map(p => {
+    const thumb = (p.images && p.images[0]) || p.img;
+    return `
+    <div class="card card-relative" onclick="openDetail(${p.id})">
+      ${p.status === 'resolved' ? '<div class="resolved-overlay">Resolved</div>' : ''}
+      <div class="card-img" style="font-size:56px;display:flex;align-items:center;justify-content:center;">
+        ${thumb ? `<img src="${thumb}" style="width:100%;height:100%;object-fit:cover;">` : (EMOJIS[p.cat] || '&#128230;')}
+      </div>
+      <div class="card-body">
+        <div class="card-badges">
+          <span class="badge badge-${p.type}">${p.type === 'lost' ? 'Lost' : 'Found'}</span>
+          <span class="badge badge-cat">${p.cat}</span>
+          ${p.status === 'resolved' ? '<span class="badge badge-resolved">Resolved</span>' : ''}
+        </div>
+        <div class="card-title">${p.title}</div>
+        <div class="card-desc">${p.desc}</div>
+        <div class="card-meta">
+          <div class="card-meta-loc">&#128205; ${p.loc}</div>
+          <span>${formatDate(p.date)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setTab(tab) {
+  activeTab = tab;
+  ['all','lost','found'].forEach(t => {
+    const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (el) el.className = 'tab' + (t === tab ? ' active-' + tab : '');
+  });
+  const labels = { all:'All Posts', lost:'Lost Items', found:'Found Items' };
+  document.getElementById('sectionTitle').textContent = labels[tab];
+  renderCards();
+}
+
+async function openDetail(id) {
+  _activePostId = id;
+  const data = await apiGet('posts.php', { action: 'get', id });
+  if (!data.ok) { showToast('Post not found.'); return; }
+  const p    = data.post;
+  const user = getUser();
+  const isOwner   = user && user.id === p.posterId;
+  const isLoggedIn = !!user;
+
+  const thumb = (p.images && p.images[0]) || p.img;
+  const avatarStyle = p.avatarColor === 'orange'
+    ? 'background:var(--accent-light);color:var(--accent);'
+    : 'background:var(--primary-light);color:var(--primary);';
+
+  // Image gallery
+  const allImgs = p.images && p.images.length ? p.images : (p.img ? [p.img] : []);
+  const galleryHtml = allImgs.length
+    ? `<div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:1rem;">
+        ${allImgs.map(src => `<img src="${src}" style="height:120px;border-radius:var(--radius-sm);object-fit:cover;flex-shrink:0;">`).join('')}
+      </div>`
+    : `<div style="font-size:72px;text-align:center;background:var(--gray-50);border-radius:var(--radius-sm);padding:1.5rem;margin-bottom:1rem;">
+        ${EMOJIS[p.cat] || '&#128230;'}
+      </div>`;
+
+  let contactSection = '';
+  if (!isLoggedIn) {
+    contactSection = `<div class="contact-lock"> Log in with your UTeM account to see contact details and send a claim.</div>`;
+  } else {
+    contactSection = `<div class="detail-row"><span class="detail-label">Contact</span>
+      <span class="detail-val" style="color:var(--primary-mid);font-weight:500;">&#128231; ${p.contact}</span></div>`;
+  }
+
+  document.getElementById('detailTitle').textContent = p.title;
+  document.getElementById('detailBody').innerHTML = `
+    ${galleryHtml}
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+      <span class="badge badge-${p.type}">${p.type==='lost'?' Lost':'Found'}</span>
+      <span class="badge badge-cat">${p.cat}</span>
+      ${p.status==='resolved'?'<span class="badge badge-resolved">Resolved</span>':''}
+    </div>
+    <div class="post-user">
+      <div class="avatar" style="${avatarStyle}">${p.avatar}</div>
+      <div><div class="post-user-name">${p.poster}</div>
+           <div class="post-user-id">${p.posterId} &middot; ${p.role}</div></div>
+    </div>
+    <div class="detail-row"><span class="detail-label">Description</span><span class="detail-val">${p.desc}</span></div>
+    <div class="detail-row"><span class="detail-label">Location</span><span class="detail-val">&#128205; ${p.loc}</span></div>
+    <div class="detail-row"><span class="detail-label">Date</span><span class="detail-val">&#128197; ${formatDate(p.date)}</span></div>
+    <div style="margin-top:12px;">${contactSection}</div>
+  `;
+
+  // Footer buttons
+  let footerBtns = `<button class="btn btn-gray btn-sm" onclick="closeModal('detailModal')">Close</button>`;
+
+  if (!isLoggedIn) {
+    footerBtns += `<button class="btn btn-primary btn-sm" onclick="window.location.href='login.html'"> Log In to Interact</button>`;
+  } else if (isOwner) {
+    // Owner controls
+    if (p.status === 'active') {
+      footerBtns += `<button class="btn btn-success btn-sm" onclick="manualResolve(${p.id})">Mark Resolved</button>`;
+    }
+    footerBtns += `<button class="btn btn-primary btn-sm" onclick="closeModal('detailModal');window.location.href='inbox.html'">View Claims</button>`;
+    footerBtns += `<button class="btn btn-danger btn-sm" onclick="deletePost(${p.id})">Delete</button>`;
+  } else if (p.status === 'active') {
+    // Other logged-in user
+    footerBtns += `<button class="btn btn-primary btn-sm" onclick="openClaimModal(${p.id})">Submit Claim</button>`;
+    footerBtns += `<button class="btn btn-success btn-sm" onclick="openContactModal(${p.id})">Contact Owner</button>`;
+  }
+
+  document.getElementById('detailFooter').innerHTML = footerBtns;
+  openModal('detailModal');
+}
+
+// ---- Claim modal ----
+function openClaimModal(postId) {
+  _activePostId = postId;
+  document.getElementById('claimMessage').value = '';
+  document.getElementById('claimError').style.display = 'none';
+  closeModal('detailModal');
+  openModal('claimModal');
+}
+
+async function doSubmitClaim() {
+  const message = document.getElementById('claimMessage').value.trim();
+  const errEl   = document.getElementById('claimError');
+  if (!message) { errEl.textContent='Please write a message.'; errEl.className='alert alert-warn'; errEl.style.display='flex'; return; }
+
+  const btn = document.getElementById('claimSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await submitClaim(_activePostId, message);
+    if (!res.ok) {
+      errEl.textContent = res.error || 'Failed to submit claim.';
+      errEl.className   = 'alert alert-warn';
+      errEl.style.display = 'flex';
+    } else {
+      closeModal('claimModal');
+      showToast('Claim submitted! The owner will review it.');
+      await loadNavBadge();
+    }
+  } catch { errEl.textContent='Server error.'; errEl.className='alert alert-warn'; errEl.style.display='flex'; }
+  finally { btn.disabled=false; btn.textContent='Send Claim'; }
+}
+
+// ---- Contact modal ----
+function openContactModal(postId) {
+  _activePostId = postId;
+  const user = getUser();
+  document.getElementById('contactInfo').value    = user?.email || '';
+  document.getElementById('contactMessage').value = '';
+  document.getElementById('contactError').style.display = 'none';
+  closeModal('detailModal');
+  openModal('contactModal');
+}
+
+async function doSendContact() {
+  const message_note = document.getElementById('contactMessage').value.trim();
+  const contact_info = document.getElementById('contactInfo').value.trim();
+  const errEl = document.getElementById('contactError');
+  if (!message_note) { errEl.textContent='Please enter a message.'; errEl.className='alert alert-warn'; errEl.style.display='flex'; return; }
+
+  const btn = document.getElementById('contactSubmitBtn');
+  btn.disabled=true; btn.textContent='Sending…';
+  try {
+    const res = await sendContact(_activePostId, message_note, contact_info);
+    if (!res.ok) {
+      errEl.textContent = res.error || 'Failed to send.';
+      errEl.className   = 'alert alert-warn';
+      errEl.style.display = 'flex';
+    } else {
+      closeModal('contactModal');
+      showToast('Message sent to post owner!');
+    }
+  } catch { errEl.textContent='Server error.'; errEl.className='alert alert-warn'; errEl.style.display='flex'; }
+  finally { btn.disabled=false; btn.textContent='Send Message'; }
+}
+
+// ---- Owner actions ----
+async function manualResolve(id) {
+  const res = await apiPost('posts.php', { action: 'resolve', id });
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  allPosts = await getPosts();
+  closeModal('detailModal');
+  renderCards();
+  showToast('Post marked as resolved!');
+}
+
+async function deletePost(id) {
+  if (!confirm('Delete this post permanently?')) return;
+  const res = await apiPost('posts.php', { action: 'delete', id });
+  if (!res.ok) { showToast(res.error || 'Failed.'); return; }
+  allPosts = await getPosts();
+  closeModal('detailModal');
+  renderCards();
+  showToast('Post deleted.');
+}
+
+function fabAction() {
+  if (!getUser()) { window.location.href = 'login.html'; return; }
+  window.location.href = 'newpost.html';
+}
+</script>
 </body>
-</html>
+</html> 
+

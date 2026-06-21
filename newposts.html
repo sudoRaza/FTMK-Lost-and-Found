@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Post — FTMK Lost &amp; Found</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="navContainer"><al"a id="postTitle" placeholder="e.g. Black Samsung phone, Matric card...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Category</label>
+      <select class="form-control" id="postCat">
+        <option>Electronics</option>
+        <option>ID / Card</option>
+        <option>Keys</option>
+        <option>Bag / Wallet</option>
+        <option>Clothing</option>
+        <option>Stationery</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <textarea class="form-control" id="postDesc" rows="3" placeholder="Describe the item, colour, brand, distinguishing features..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Location</label>
+      <input type="text" class="form-control" id="postLoc" placeholder="e.g. Lab 3, Level 2, Block A, Cafe...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-control" id="postDate">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Item Photo (optional)</label>
+      <input type="file" accept="image/*" id="postImg" class="form-control" style="padding:6px;">
+    </div>
+
+    <div id="postError" style="display:none;" class="alert"></div>
+
+    <div style="display:flex;gap:10px;margin-top:0.5rem;">
+      <button class="btn btn-gray" style="flex:1;justify-content:center;padding:10px;" onclick="window.location.href='index.html'">Cancel</button>
+      <button class="btn btn-accent" style="flex:2;justify-content:center;padding:10px;" id="submitBtn" onclick="submitPost()">Publish Post</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+let postType = 'lost';
+
+(async () => {
+  await initUser();
+  const user = getUser();
+  if (!user) { window.location.href = 'login.html?redirect=newpost.html'; return; }
+  document.getElementById('navContainer').innerHTML = getNavHTML('newpost');
+  document.getElementById('postDate').valueAsDate = new Date();
+})();
+
+function setPostType(type) {
+  postType = type;
+  document.getElementById('typeLostBtn').classList.toggle('active', type === 'lost');
+  document.getElementById('typeFoundBtn').classList.toggle('active', type === 'found');
+}
+
+function showError(msg) {
+  const el = document.getElementById('postError');
+  el.textContent = msg;
+  el.className = 'alert alert-warn';
+  el.style.display = 'flex';
+}
+
+async function submitPost() {
+  const title = document.getElementById('postTitle').value.trim();
+  const cat   = document.getElementById('postCat').value;
+  const desc  = document.getElementById('postDesc').value.trim();
+  const loc   = document.getElementById('postLoc').value.trim();
+  const date  = document.getElementById('postDate').value;
+
+  if (!title || !desc || !loc || !date) { showError('Please fill in all required fields.'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Publishing…';
+
+  // Read image as base64 if provided
+  let img = null;
+  const imgFile = document.getElementById('postImg').files[0];
+  if (imgFile) {
+    img = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = e => resolve(e.target.result);
+      reader.onerror = () => reject(new Error('File read failed'));
+      reader.readAsDataURL(imgFile);
+    });
+  }
+
+  try {
+    const res = await apiPost('posts.php', { action: 'create' }, { type: postType, title, cat, desc, loc, date, img });
+    if (!res.ok) {
+      showError(res.error || 'Could not create post.');
+    } else {
+      window.location.href = 'index.html';
+    }
+  } catch {
+    showError('Server error. Make sure XAMPP is running.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Publish Post';
+  }
+}
+</script>
+</body>
+</html>
